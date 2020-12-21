@@ -1,0 +1,98 @@
+service: resistance-websocket 
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - "dynamodb:PutItem"
+        - "dynamodb:GetItem"
+        - "dynamodb:DeleteItem"
+        - "dynamodb:Scan"
+      Resource:
+        - Fn::GetAtt: [ChatTable, Arn]
+    - Effect: Allow
+      Action:
+        - "dynamodb:PutItem"
+        - "dynamodb:GetItem"
+        - "dynamodb:DeleteItem"
+        - "dynamodb:Scan"
+      Resource:
+        - Fn::GetAtt: [GameStateTable, Arn]
+    - Effect: Allow
+      Action:
+        - "execute-api:ManageConnections"
+      Resource:
+        - "arn:aws:execute-api:*:*:**/@connections/*"
+
+functions:
+  connectionHandler:
+    handler: handler.connectionHandler
+    events:
+      - websocket:
+          route: $connect
+      - websocket:
+          route: $disconnect
+  defaultHandler:
+    handler: handler.defaultHandler
+    events:
+      - websocket:
+          route: $default
+  updateConnectionWithSession:
+    handler: handler.updateConnectionWithSession
+    events:
+      - websocket:
+          route: updateConnectionWithSession
+  sendMessageHandler:
+    handler: handler.sendMessageHandler
+    events:
+      - websocket:
+          route: sendMessage
+  createGameStateHandler:
+    handler: gameUtil.createGameStateHandler
+    events:
+      - websocket:
+          route: createGameState
+  getGameStateHandler:
+    handler: gameUtil.getGameStateHandler
+    events:
+      - websocket:
+          route: getGameState
+  addPlayerHandler:
+    handler: gameUtil.addPlayerHandler
+    events:
+      - websocket:
+          route: addPlayer
+  startGameHandler:
+    handler: gameUtil.startGameHandler
+    events:
+      - websocket:
+          route: startGame
+
+
+resources:
+  Resources:
+    ChatTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        AttributeDefinitions:
+        - AttributeName: "connectionId"
+          AttributeType: "S"
+        KeySchema:
+        - AttributeName: "connectionId"
+          KeyType: "HASH"
+        BillingMode: PAY_PER_REQUEST
+        TableName: ResistanceChatIdTable
+    GameStateTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        AttributeDefinitions:
+        - AttributeName: "sessionId"
+          AttributeType: "S"
+        KeySchema:
+        - AttributeName: "sessionId"
+          KeyType: "HASH"
+        BillingMode: PAY_PER_REQUEST
+        TableName: ResistanceGameStateTable

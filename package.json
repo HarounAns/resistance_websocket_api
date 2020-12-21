@@ -1,0 +1,21 @@
+{
+  "name": "resistance-websockets-chat",
+  "version": "1.0.0",
+  "main": "handler.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "deploy": "npx eslint . && sls deploy --aws-profile home_personal"
+  },
+  "author": "",
+  "license": "ISC",
+  "keywords": [],
+  "description": "",
+  "dependencies": {
+    "aws-sdk": "^2.404.0",
+    "serverless-websockets-plugin": "^1.0.0",
+    "wscat": "^4.0.0"
+  },
+  "devDependencies": {
+    "eslint": "^7.16.0"
+  }
+}
