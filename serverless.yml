@@ -70,7 +70,21 @@ functions:
     events:
       - websocket:
           route: startGame
-
+  chooseTeamHandler:
+    handler: gameUtil.chooseTeamHandler
+    events:
+      - websocket:
+          route: chooseTeam
+  voteHandler:
+    handler: gameUtil.voteHandler
+    events:
+      - websocket:
+          route: vote
+  conductMissionHandler:
+    handler: gameUtil.conductMissionHandler
+    events:
+      - websocket:
+          route: conductMission
 
 resources:
   Resources:

@@ -8,7 +8,10 @@ const {
     getGameState,
     updateGameState,
     startGame,
-    updateConnectionWithSession
+    updateConnectionWithSession,
+    chooseTeam,
+    vote,
+    conductMission
 } = require('./helpers');
 
 
@@ -77,7 +80,7 @@ module.exports.addPlayerHandler = async (event) => {
         await updateConnectionWithSession(connectionId, sessionId);
 
         let gameState = await getGameState(sessionId);
-        let { spectators, players } = gameState;
+        let { players } = gameState;
         let playerExists = false;
 
         // iterate through list of existing players
@@ -89,26 +92,18 @@ module.exports.addPlayerHandler = async (event) => {
 
                 if (p.connectionId != null) {
                     // if player is already connected, dont let player connect to it
-                    return successfullResponse
+                    return {
+                        statusCode: 400,
+                        body: 'Player already in game.'
+                    }
                 }
                 p.connectionId = connectionId;
             }
         }
 
-        // if player doesnt already exist, add either to SPECTATOR or IN GAME list
+        // if player doesnt already exist, add to list
         if (!playerExists) {
-            if (spectators) {
-                // add player to spectators list if exists, and player not in it player list
-                if (!spectators.includes(playerName))
-                    spectators.push(playerName);
-            }
-            else if (gameState.players.length >= 10) {
-                // if already 6 players creat spectators list and add player
-                gameState.spectators = [playerName];
-            }
-            else {
-
-
+            if (players.length < 10) {
                 // add player to list 
                 let player = {
                     name: playerName,
@@ -154,6 +149,91 @@ module.exports.startGameHandler = async (event) => {
         }
 
         gameState = await startGame(gameState);
+
+        // update table in db
+        await updateGameState(gameState)
+
+        // tells the app to rerender when you get the game state
+        gameState.rerender = true;
+        const message = JSON.stringify(gameState, '', 2);
+
+        // send gameState to every client connected
+        await sendMessageToAllInSession(sessionId, message, event.requestContext);
+        return successfullResponse;
+    } catch (error) {
+        console.log(error);
+        return {
+            statusCode: 500,
+            error: error.message
+        }
+    }
+}
+
+module.exports.chooseTeamHandler = async (event) => {
+    try {
+        const body = JSON.parse(event.body);
+        const { sessionId, team } = body;
+
+        let gameState = await getGameState(sessionId);
+
+        gameState = await chooseTeam(gameState, team);
+
+        // update table in db
+        await updateGameState(gameState)
+
+        // tells the app to rerender when you get the game state
+        gameState.rerender = true;
+        const message = JSON.stringify(gameState, '', 2);
+
+        // send gameState to every client connected
+        await sendMessageToAllInSession(sessionId, message, event.requestContext);
+        return successfullResponse;
+    } catch (error) {
+        console.log(error);
+        return {
+            statusCode: 500,
+            error: error.message
+        }
+    }
+}
+
+module.exports.voteHandler = async (event) => {
+    try {
+        const body = JSON.parse(event.body);
+        const { sessionId, playerName, approve } = body;
+
+        let gameState = await getGameState(sessionId);
+
+        gameState = await vote(gameState, approve, playerName);
+
+        // update table in db
+        await updateGameState(gameState)
+
+        // tells the app to rerender when you get the game state
+        gameState.rerender = true;
+        const message = JSON.stringify(gameState, '', 2);
+
+        // send gameState to every client connected
+        await sendMessageToAllInSession(sessionId, message, event.requestContext);
+        return successfullResponse;
+    } catch (error) {
+        console.log(error);
+        return {
+            statusCode: 500,
+            error: error.message
+        }
+    }
+}
+
+
+module.exports.conductMissionHandler = async (event) => {
+    try {
+        const body = JSON.parse(event.body);
+        const { sessionId, playerName, success } = body;
+
+        let gameState = await getGameState(sessionId);
+
+        gameState = await conductMission(gameState, success, playerName);
 
         // update table in db
         await updateGameState(gameState)

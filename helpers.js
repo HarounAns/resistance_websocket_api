@@ -47,11 +47,6 @@ const getConnectionIdsInSession = async sessionId => {
     let connections = [];
     let gameState = await getGameState(sessionId);
 
-    // add the console Id if it exists
-    if (gameState.consoleId) {
-        connections.push(gameState.consoleId);
-    }
-
     for (let player of gameState.players) {
         if (player.connectionId) {
             connections.push(player.connectionId);
@@ -174,13 +169,23 @@ const emptyStateMachine = {
     gameOverState: {}
 }
 
+const nextPlayer = gameState => {
+    gameState.currentPlayerIndex++;
+    if (gameState.currentPlayerIndex > gameState.numPlayers - 1) {
+        gameState.currentPlayerIndex = 0;
+    }
+    return gameState;
+}
+
 const createGameState = async (sessionId, connectionId, name) => {
     const gameState = {
         sessionId,
         currentPlayerIndex: 0, // determines who the captain is
+        failedVoteCounter: 0,
         players: [{ name, connectionId }],
         spies: [],
         resistance: [],
+        missions: [null, null, null, null, null], // stores the outcome of the missions
         allPlayersJoined: false,
         stateMachine: emptyStateMachine
     };
@@ -238,6 +243,16 @@ const missionMapping = {
     10: [3, 4, 4, 5, 5]
 }
 
+const getPlayerNamesList = gameState => {
+    const { players } = gameState;
+
+    let list = [];
+    for (let player of players) {
+        list.push(player.name);
+    }
+    return list;
+}
+
 const startGame = gameState => {
     const numPlayers = gameState.players.length;
 
@@ -279,7 +294,304 @@ const startGame = gameState => {
     // set board 
     gameState.board = missionMapping[numPlayers];
 
+    // turns will be 0 to 4
+    gameState.turn = 0;
+
+    // game starts off in buildTeamState
+    gameState.stateMachine.buildTeamState.currentState = true;
+    gameState.stateMachine.currentState = 'buildTeamState';
+
     return gameState
+}
+
+const chooseTeam = (gameState, team) => {
+    // check between length of team and expected numPlayers on team
+    const { numPlayers, turn } = gameState;
+    const numPlayersOnTeam = missionMapping[numPlayers][turn];
+
+    if (numPlayersOnTeam !== team.length) {
+        console.log('Invalid team: ', team);
+        throw `Invalid Team. Team should have ${numPlayersOnTeam} players. It has ${team.length} players.`;
+    }
+
+    const playersList = getPlayerNamesList(gameState);
+
+    let votes = {};
+    for (let name of playersList) {
+        votes[name] = null;
+    }
+
+    const stateMachine = {
+        currentState: 'voteState',
+        buildTeamState: {},
+        voteState: {
+            currentState: true,
+            team,
+            votes
+        },
+        conductMissionState: {},
+        gameOverState: {}
+    }
+
+    gameState.stateMachine = stateMachine;
+    return gameState;
+}
+
+/**
+ * resets failed vote counter
+ * clears vote state
+ * sets conductMission state to true
+ * sets mission based on team for conduct mission object
+ * @param {Object} gameState 
+ */
+const approveTeam = gameState => {
+    // resets failed vote counter
+    gameState.failedVoteCounter = 0;
+
+    // create copy of team and add to conduct mission state to store the mission results
+    const cpTeam = [...gameState.stateMachine.voteState.team];
+
+    let mission = {};
+    for (let name of cpTeam) {
+        mission[name] = null;
+    }
+
+    const stateMachine = {
+        currentState: 'conductMissionState',
+        buildTeamState: {},
+        voteState: {}, // clears vote state
+        conductMissionState: {
+            currentState: true,
+            mission // sets mission based on team for conduct mission object
+        },
+        gameOverState: {}
+    }
+
+    gameState.stateMachine = stateMachine;
+    return gameState;
+}
+
+/**
+ * increments failed vote counter
+ * increments currentPlayerIndex to get new Captain
+ * clears vote state
+ * sets buildTeam state to true
+ * @param {Object} gameState 
+ */
+const rejectTeam = gameState => {
+    // increments failed vote counter
+    gameState.failedVoteCounter++;
+
+    // next captain
+    gameState = nextPlayer(gameState);
+
+    const stateMachine = {
+        currentState: 'buildTeam',
+        buildTeamState: { currentState: true },
+        voteState: {}, // clears vote state
+        conductMissionState: {},
+        gameOverState: {}
+    }
+
+    gameState.stateMachine = stateMachine;
+    return gameState;
+}
+
+/**
+ * update the players vote in the votes section
+ * if all players have voted determine if it was a success or not
+ * if it is call approveTeam
+ * other wise call reject team
+ * @param {Object} gameState 
+ * @param {Boolean} approve 
+ * @param {String} playerName 
+ */
+const vote = (gameState, approve, playerName) => {
+    const vote = approve ? 'A' : 'R';
+    let { votes } = gameState.stateMachine.voteState;
+    votes[playerName] = vote;
+
+    let allPlayersVoted = true;
+    let numApproves = 0;
+    let numRejects = 0;
+    for (let player in votes) {
+        if (!votes[player]) {
+            allPlayersVoted = false;
+            break;
+        }
+        if (votes[player] == 'A') {
+            numApproves++;
+        }
+        else if (votes[player] == 'R') {
+            numRejects++;
+        }
+    }
+
+    gameState.stateMachine.voteState.allPlayersVoted = allPlayersVoted;
+    if (!allPlayersVoted) {
+        return gameState;
+    }
+
+    // all players have voted, check if successful or not
+    const successfulTeam = numApproves > numRejects;
+
+    if (successfulTeam) {
+        return approveTeam(gameState);
+    }
+
+    return rejectTeam(gameState);
+}
+
+const isMissionSuccessful = (gameState, numFails) => {
+    // if turn = 4 and numPlayers >= 7, you need 2 fails
+    const { turn, numPlayers } = gameState;
+    if (turn == 4 && numPlayers >= 7) {
+        return numFails < 2;
+    }
+    return numFails == 0;
+}
+
+const hasResistanceWon = missions => {
+    let numSuccess = 0;
+    
+    for (let player in missions) {
+        if (missions[player] == 'S') {
+            numSuccess++;
+        }
+    }
+
+    return numSuccess >= 3;
+}
+
+const haveSpiesWon = missions => {
+    let numFails = 0;
+    
+    for (let player in missions) {
+        if (missions[player] == 'F') {
+            numFails++;
+        }
+    }
+
+    return numFails >= 3;
+}
+
+const resistanceWins = gameState => {
+    gameState.winner = 'RESISTANCE';
+    
+    const stateMachine = {
+        currentState: 'gameOverState',
+        buildTeamState: {},
+        voteState: {},
+        conductMissionState: {},
+        gameOverState: {
+            currentState: true,
+        }
+    }
+
+    gameState.stateMachine = stateMachine;
+    return gameState;
+}
+
+const spiesWin = gameState => {
+    gameState.winner = 'SPIES';
+    
+    const stateMachine = {
+        currentState: 'gameOverState',
+        buildTeamState: {},
+        voteState: {},
+        conductMissionState: {},
+        gameOverState: {
+            currentState: true,
+        }
+    }
+
+    gameState.stateMachine = stateMachine;
+    return gameState;
+}
+
+/**
+ * Increment turn counter
+ * Increment currentPlayerIndex
+ * Send to build team state
+ * @param {Object} gameState 
+ */
+const nextTurn = gameState => {
+    // next turn 
+    gameState.turn++;
+
+    // next captain
+    gameState = nextPlayer(gameState);
+
+    // send to build team state
+    const stateMachine = {
+        currentState: 'buildTeam',
+        buildTeamState: { currentState: true },
+        voteState: {}, // clears vote state
+        conductMissionState: {},
+        gameOverState: {}
+    }
+
+    gameState.stateMachine = stateMachine;
+    return gameState;
+}   
+
+/**
+ * update the players vote in the votes section
+ * if all players have voted determine if it was a success or not
+ * if it is call approveTeam
+ * other wise call reject team
+ * @param {Object} gameState 
+ * @param {Boolean} approve 
+ * @param {String} playerName 
+ */
+const conductMission = (gameState, success, playerName) => {
+    const code = success ? 'S' : 'F';
+    let { mission } = gameState.stateMachine.conductMissionState;
+    mission[playerName] = code;
+
+    let allPlayersDone = true;
+    let numFails = 0;
+    for (let player in mission) {
+        if (!mission[player]) {
+            allPlayersDone = false;
+            break;
+        }
+
+        if (mission[player] == 'F') {
+            numFails++;
+        }
+    }
+
+    gameState.stateMachine.voteState.allPlayersDone = allPlayersDone;
+    if (!allPlayersDone) {
+        return gameState;
+    }
+
+    // all players have voted, check if successful or not
+    const successfulMission = isMissionSuccessful(gameState, numFails);
+    let { missions, turn } = gameState;
+
+    if (successfulMission) {
+        // set mission to sucess
+        missions[turn] = 'S';
+
+        // check if resistance won
+        if (hasResistanceWon(missions)) {
+            return resistanceWins(gameState);
+        }
+    } else {
+        // set mission to failure
+        missions[turn] = 'F';
+
+        // check if spys won
+        if (haveSpiesWon(missions)) {
+            return spiesWin(gameState);
+        }
+    }
+
+    // if neither team has won go to next turn
+    gameState.missions = missions;
+    return nextTurn(gameState);
 }
 
 const successfullResponse = {
@@ -312,7 +624,10 @@ const helpers = {
     shuffle,
     successfullResponse,
     updateGameState,
-    updateConnectionWithSession
+    updateConnectionWithSession,
+    chooseTeam,
+    vote,
+    conductMission
 }
 
 module.exports = helpers;
