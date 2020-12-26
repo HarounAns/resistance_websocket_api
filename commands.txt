@@ -1,0 +1,3 @@
+{"action": "conductMission", "sessionId": "XBZG", "playerName": "HAROUN", "success": false}
+{"action": "vote", "sessionId": "XBZG", "playerName": "HAROUN", "approve": false}
+{"action": "getGameState", "sessionId": "XBZG"}
