@@ -12,7 +12,11 @@ const sendMessageToAllConnected = async (message, requestContext) => {
 
     return Promise.all(
         connections.map(async connection => {
-            await send(message, requestContext, connection.connectionId);
+            try {
+                await send(message, requestContext, connection.connectionId);
+            } catch (error) {
+                console.error('CAUGHT: ', error)
+            }
         })
     );
 }
@@ -35,7 +39,11 @@ const sendMessageToAllInSession = async (sessionId, message, requestContext) => 
 
     return Promise.all(
         connectionIds.map(async connectionId => {
-            await send(message, requestContext, connectionId);
+            try {
+                await send(message, requestContext, connectionId);
+            } catch (error) {
+                console.error('CAUGHT: ', error);
+            }
         })
     );
 
