@@ -46,8 +46,6 @@ const sendMessageToAllInSession = async (sessionId, message, requestContext) => 
             }
         })
     );
-
-    // await sendMessageToAllConnected(message, requestContext);
 }
 
 // goes to game state table and gets all connection ids from player and consoles connection id
@@ -261,7 +259,7 @@ const getPlayerNamesList = gameState => {
     return list;
 }
 
-const startGame = gameState => {
+const startGame = async (gameState, event) => {
     const numPlayers = gameState.players.length;
 
     // all players joined is true to start the game
@@ -305,11 +303,40 @@ const startGame = gameState => {
     // turns will be 0 to 4
     gameState.turn = 0;
 
+    // put in reveal state for five seconds
+    const showRevealGameState = await showRevealState(gameState);
+
+    // send a response
+    await sendMessageToAllInSession(gameState.sessionId, showRevealGameState, event.requestContext);
+    await sleep(5000);
+
+
     // game starts off in buildTeamState
     gameState.stateMachine.buildTeamState.currentState = true;
     gameState.stateMachine.currentState = 'buildTeamState';
 
     return gameState
+}
+
+const showRevealState = async gameState => {
+    const stateMachine = {
+        currentState: 'revealState',
+        buildTeamState: {},
+        voteState: {},
+        conductMissionState: {},
+        showVoteResultsState: {},
+        gameOverState: {}
+    }
+    const copy = { ...gameState };
+    copy.stateMachine = stateMachine;
+
+    // update table in db
+    await updateGameState(copy);
+
+    // tells the app to rerender when you get the game state
+    copy.rerender = true;
+    const message = JSON.stringify(copy, '', 2);
+    return message;
 }
 
 const chooseTeam = (gameState, team) => {
@@ -376,6 +403,7 @@ const approveTeam = gameState => {
     }
 
     gameState.stateMachine = stateMachine;
+    console.log('approveTeam', gameState);
     return gameState;
 }
 
@@ -394,7 +422,7 @@ const rejectTeam = gameState => {
     gameState = nextPlayer(gameState);
 
     const stateMachine = {
-        currentState: 'buildTeam',
+        currentState: 'buildTeamState',
         buildTeamState: { currentState: true },
         voteState: {}, // clears vote state
         conductMissionState: {},
@@ -402,6 +430,7 @@ const rejectTeam = gameState => {
     }
 
     gameState.stateMachine = stateMachine;
+    console.log('rejectTeam', gameState);
     return gameState;
 }
 
@@ -414,7 +443,7 @@ const rejectTeam = gameState => {
  * @param {Boolean} approve 
  * @param {String} playerName 
  */
-const vote = (gameState, approve, playerName) => {
+const vote = async (gameState, approve, playerName, event) => {
     const vote = approve ? 'A' : 'R';
     let { votes } = gameState.stateMachine.voteState;
     votes[playerName] = vote;
@@ -440,6 +469,12 @@ const vote = (gameState, approve, playerName) => {
         return gameState;
     }
 
+    const showVoteGameState = await showVoteState(gameState, votes);
+
+    // send a response
+    await sendMessageToAllInSession(gameState.sessionId, showVoteGameState, event.requestContext);
+    await sleep(5000);
+
     // all players have voted, check if successful or not
     const successfulTeam = numApproves > numRejects;
 
@@ -448,6 +483,29 @@ const vote = (gameState, approve, playerName) => {
     }
 
     return rejectTeam(gameState);
+}
+
+const showVoteState = async (gameState, votes) => {
+    const stateMachine = {
+        currentState: 'showVoteResultsState',
+        buildTeamState: {},
+        voteState: {}, // clears vote state
+        conductMissionState: {},
+        showVoteResultsState: {
+            votes
+        },
+        gameOverState: {}
+    }
+    const copy = { ...gameState };
+    copy.stateMachine = stateMachine;
+
+    // update table in db
+    await updateGameState(copy);
+
+    // tells the app to rerender when you get the game state
+    copy.rerender = true;
+    const message = JSON.stringify(copy, '', 2);
+    return message;
 }
 
 const isMissionSuccessful = (gameState, numFails) => {
@@ -461,7 +519,7 @@ const isMissionSuccessful = (gameState, numFails) => {
 
 const hasResistanceWon = missions => {
     let numSuccess = 0;
-    
+
     for (let player in missions) {
         if (missions[player] == 'S') {
             numSuccess++;
@@ -471,9 +529,13 @@ const hasResistanceWon = missions => {
     return numSuccess >= 3;
 }
 
+const sleep = (ms) => {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 const haveSpiesWon = missions => {
     let numFails = 0;
-    
+
     for (let player in missions) {
         if (missions[player] == 'F') {
             numFails++;
@@ -485,7 +547,7 @@ const haveSpiesWon = missions => {
 
 const resistanceWins = gameState => {
     gameState.winner = 'RESISTANCE';
-    
+
     const stateMachine = {
         currentState: 'gameOverState',
         buildTeamState: {},
@@ -502,7 +564,7 @@ const resistanceWins = gameState => {
 
 const spiesWin = gameState => {
     gameState.winner = 'SPIES';
-    
+
     const stateMachine = {
         currentState: 'gameOverState',
         buildTeamState: {},
@@ -532,7 +594,7 @@ const nextTurn = gameState => {
 
     // send to build team state
     const stateMachine = {
-        currentState: 'buildTeam',
+        currentState: 'buildTeamState',
         buildTeamState: { currentState: true },
         voteState: {}, // clears vote state
         conductMissionState: {},
@@ -541,7 +603,7 @@ const nextTurn = gameState => {
 
     gameState.stateMachine = stateMachine;
     return gameState;
-}   
+}
 
 /**
  * update the players vote in the votes section
@@ -552,7 +614,7 @@ const nextTurn = gameState => {
  * @param {Boolean} approve 
  * @param {String} playerName 
  */
-const conductMission = (gameState, success, playerName) => {
+const conductMission = async (gameState, success, playerName, event) => {
     const code = success ? 'S' : 'F';
     let { mission } = gameState.stateMachine.conductMissionState;
     mission[playerName] = code;
@@ -579,6 +641,13 @@ const conductMission = (gameState, success, playerName) => {
     const successfulMission = isMissionSuccessful(gameState, numFails);
     let { missions, turn } = gameState;
 
+    // show vote conduct result mission state
+    const showMissionResultGameState = await showMissionResults(gameState, mission, successfulMission);
+
+    // send a response
+    await sendMessageToAllInSession(gameState.sessionId, showMissionResultGameState, event.requestContext);
+    await sleep(5000);
+
     if (successfulMission) {
         // set mission to sucess
         missions[turn] = 'S';
@@ -600,6 +669,31 @@ const conductMission = (gameState, success, playerName) => {
     // if neither team has won go to next turn
     gameState.missions = missions;
     return nextTurn(gameState);
+}
+
+const showMissionResults = async (gameState, mission, isSuccessful) => {
+    const stateMachine = {
+        currentState: 'showMissionResultsState',
+        buildTeamState: {},
+        voteState: {}, // clears vote state
+        conductMissionState: {},
+        showVoteResultsState: {},
+        showMissionResultsState: {
+            mission,
+            isSuccessful
+        },
+        gameOverState: {}
+    }
+    const copy = { ...gameState };
+    copy.stateMachine = stateMachine;
+
+    // update table in db
+    await updateGameState(copy);
+
+    // tells the app to rerender when you get the game state
+    copy.rerender = true;
+    const message = JSON.stringify(copy, '', 2);
+    return message;
 }
 
 const successfullResponse = {

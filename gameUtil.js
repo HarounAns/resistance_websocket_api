@@ -148,7 +148,7 @@ module.exports.startGameHandler = async (event) => {
             }
         }
 
-        gameState = await startGame(gameState);
+        gameState = await startGame(gameState, event);
 
         // update table in db
         await updateGameState(gameState)
@@ -204,7 +204,7 @@ module.exports.voteHandler = async (event) => {
 
         let gameState = await getGameState(sessionId);
 
-        gameState = await vote(gameState, approve, playerName);
+        gameState = await vote(gameState, approve, playerName, event);
 
         // update table in db
         await updateGameState(gameState)
@@ -233,7 +233,7 @@ module.exports.conductMissionHandler = async (event) => {
 
         let gameState = await getGameState(sessionId);
 
-        gameState = await conductMission(gameState, success, playerName);
+        gameState = await conductMission(gameState, success, playerName, event);
 
         // update table in db
         await updateGameState(gameState)
