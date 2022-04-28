@@ -509,9 +509,9 @@ const showVoteState = async (gameState, votes) => {
 }
 
 const isMissionSuccessful = (gameState, numFails) => {
-    // if turn = 4 and numPlayers >= 7, you need 2 fails
+    // if turn = 3 (missions are from 0 to 4) and numPlayers >= 7, you need 2 fails
     const { turn, numPlayers } = gameState;
-    if (turn == 4 && numPlayers >= 7) {
+    if (turn == 3 && numPlayers >= 7) {
         return numFails < 2;
     }
     return numFails == 0;
