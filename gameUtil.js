@@ -73,8 +73,14 @@ module.exports.addPlayerHandler = async (event) => {
     try {
         const body = JSON.parse(event.body);
         const sessionId = body.sessionId;
-        const playerName = body.playerName.toUpperCase();
         const connectionId = event.requestContext.connectionId;
+        let playerName = body.playerName.toUpperCase();
+        let forceAdd = false;
+
+        if (playerName.startsWith('*')) {
+            playerName = playerName.substring(1);
+            forceAdd = true;
+        }
 
         // update chatID table to include sessionID
         await updateConnectionWithSession(connectionId, sessionId);
@@ -90,7 +96,7 @@ module.exports.addPlayerHandler = async (event) => {
             if (p.name.toUpperCase() == playerName) {
                 playerExists = true;
 
-                if (p.connectionId != null) {
+                if (p.connectionId != null && !forceAdd) {
                     // if player is already connected, dont let player connect to it
                     return {
                         statusCode: 400,
