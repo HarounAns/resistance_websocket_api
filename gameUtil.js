@@ -1,5 +1,5 @@
 // these are actions used specifically for game calls
-'use strict';
+"use strict";
 const {
     successfullResponse,
     sendMessageToOne,
@@ -11,11 +11,10 @@ const {
     updateConnectionWithSession,
     chooseTeam,
     vote,
-    conductMission
-} = require('./helpers');
+    conductMission,
+} = require("./helpers");
 
-
-require('aws-sdk/clients/apigatewaymanagementapi');
+require("aws-sdk/clients/apigatewaymanagementapi");
 
 module.exports.getGameStateHandler = async (event) => {
     try {
@@ -25,19 +24,23 @@ module.exports.getGameStateHandler = async (event) => {
 
         // tells the app to rerender when you get the game state
         gameState.rerender = true;
-        const message = JSON.stringify(gameState, '', 2);
+        const message = JSON.stringify(gameState, "", 2);
 
         // send gameState to every client connected
-        await sendMessageToAllInSession(sessionId, message, event.requestContext);
+        await sendMessageToAllInSession(
+            sessionId,
+            message,
+            event.requestContext
+        );
         return successfullResponse;
     } catch (error) {
         console.log(error);
         return {
             statusCode: 500,
-            error: error.message
-        }
+            error: error.message,
+        };
     }
-}
+};
 
 // is a LAMBDA called by the console and adds its connection ID
 module.exports.createGameStateHandler = async (event) => {
@@ -47,7 +50,11 @@ module.exports.createGameStateHandler = async (event) => {
         const playerName = body.playerName;
         const connectionId = event.requestContext.connectionId;
 
-        let gameState = await createGameState(sessionId, connectionId, playerName);
+        let gameState = await createGameState(
+            sessionId,
+            connectionId,
+            playerName
+        );
 
         // add the consoles connection id as console ID
         gameState.consoleId = connectionId;
@@ -55,7 +62,7 @@ module.exports.createGameStateHandler = async (event) => {
         // tells the app to rerender when you get the game state
         gameState.rerender = true;
 
-        const message = JSON.stringify(gameState, '', 2);
+        const message = JSON.stringify(gameState, "", 2);
 
         // send created game state back to the console client connected
         await sendMessageToOne(message, event.requestContext, connectionId);
@@ -64,10 +71,10 @@ module.exports.createGameStateHandler = async (event) => {
         console.log(error);
         return {
             statusCode: 500,
-            error: error.message
-        }
+            error: error.message,
+        };
     }
-}
+};
 
 module.exports.addPlayerHandler = async (event) => {
     try {
@@ -77,7 +84,7 @@ module.exports.addPlayerHandler = async (event) => {
         let playerName = body.playerName.toUpperCase();
         let forceAdd = false;
 
-        if (playerName.startsWith('*')) {
+        if (playerName.startsWith("*")) {
             playerName = playerName.substring(1);
             forceAdd = true;
         }
@@ -92,16 +99,16 @@ module.exports.addPlayerHandler = async (event) => {
         // iterate through list of existing players
         for (let p of players) {
             // playerNames.push(p.name);
-            // if player already exists 
+            // if player already exists
             if (p.name.toUpperCase() == playerName) {
                 playerExists = true;
 
                 if (p.connectionId != null && !forceAdd) {
                     // if player is already connected, dont let player connect to it
                     return {
-                        statusCode: 400,
-                        body: 'Player already in game.'
-                    }
+                        statusCode: 401,
+                        body: "Player already in game.",
+                    };
                 }
                 p.connectionId = connectionId;
             }
@@ -109,8 +116,15 @@ module.exports.addPlayerHandler = async (event) => {
 
         // if player doesnt already exist, add to list
         if (!playerExists) {
+            if (gameState.allPlayersJoined) {
+                return {
+                    statusCode: 401,
+                    body: "Game has already started",
+                };
+            }
+
             if (players.length < 10) {
-                // add player to list 
+                // add player to list
                 let player = {
                     name: playerName,
                     connectionId,
@@ -121,23 +135,27 @@ module.exports.addPlayerHandler = async (event) => {
         }
 
         // update table in db
-        await updateGameState(gameState)
+        await updateGameState(gameState);
 
         // tells the app to rerender when you get the game state
         gameState.rerender = true;
-        const message = JSON.stringify(gameState, '', 2);
+        const message = JSON.stringify(gameState, "", 2);
 
         // send gameState to every client connected
-        await sendMessageToAllInSession(sessionId, message, event.requestContext);
+        await sendMessageToAllInSession(
+            sessionId,
+            message,
+            event.requestContext
+        );
         return successfullResponse;
     } catch (error) {
         console.log(error);
         return {
             statusCode: 500,
-            error: error.message
-        }
+            error: error.message,
+        };
     }
-}
+};
 
 module.exports.startGameHandler = async (event) => {
     try {
@@ -150,30 +168,34 @@ module.exports.startGameHandler = async (event) => {
         if (gameState.players.length < 5) {
             return {
                 statusCode: 400,
-                body: 'Needs at least 5 players to play'
-            }
+                body: "Needs at least 5 players to play",
+            };
         }
 
         gameState = await startGame(gameState, event);
 
         // update table in db
-        await updateGameState(gameState)
+        await updateGameState(gameState);
 
         // tells the app to rerender when you get the game state
         gameState.rerender = true;
-        const message = JSON.stringify(gameState, '', 2);
+        const message = JSON.stringify(gameState, "", 2);
 
         // send gameState to every client connected
-        await sendMessageToAllInSession(sessionId, message, event.requestContext);
+        await sendMessageToAllInSession(
+            sessionId,
+            message,
+            event.requestContext
+        );
         return successfullResponse;
     } catch (error) {
         console.log(error);
         return {
             statusCode: 500,
-            error: error.message
-        }
+            error: error.message,
+        };
     }
-}
+};
 
 module.exports.chooseTeamHandler = async (event) => {
     try {
@@ -185,23 +207,27 @@ module.exports.chooseTeamHandler = async (event) => {
         gameState = await chooseTeam(gameState, team);
 
         // update table in db
-        await updateGameState(gameState)
+        await updateGameState(gameState);
 
         // tells the app to rerender when you get the game state
         gameState.rerender = true;
-        const message = JSON.stringify(gameState, '', 2);
+        const message = JSON.stringify(gameState, "", 2);
 
         // send gameState to every client connected
-        await sendMessageToAllInSession(sessionId, message, event.requestContext);
+        await sendMessageToAllInSession(
+            sessionId,
+            message,
+            event.requestContext
+        );
         return successfullResponse;
     } catch (error) {
         console.log(error);
         return {
             statusCode: 500,
-            error: error.message
-        }
+            error: error.message,
+        };
     }
-}
+};
 
 module.exports.voteHandler = async (event) => {
     try {
@@ -213,24 +239,27 @@ module.exports.voteHandler = async (event) => {
         gameState = await vote(gameState, approve, playerName, event);
 
         // update table in db
-        await updateGameState(gameState)
+        await updateGameState(gameState);
 
         // tells the app to rerender when you get the game state
         gameState.rerender = true;
-        const message = JSON.stringify(gameState, '', 2);
+        const message = JSON.stringify(gameState, "", 2);
 
         // send gameState to every client connected
-        await sendMessageToAllInSession(sessionId, message, event.requestContext);
+        await sendMessageToAllInSession(
+            sessionId,
+            message,
+            event.requestContext
+        );
         return successfullResponse;
     } catch (error) {
         console.log(error);
         return {
             statusCode: 500,
-            error: error.message
-        }
+            error: error.message,
+        };
     }
-}
-
+};
 
 module.exports.conductMissionHandler = async (event) => {
     try {
@@ -242,20 +271,24 @@ module.exports.conductMissionHandler = async (event) => {
         gameState = await conductMission(gameState, success, playerName, event);
 
         // update table in db
-        await updateGameState(gameState)
+        await updateGameState(gameState);
 
         // tells the app to rerender when you get the game state
         gameState.rerender = true;
-        const message = JSON.stringify(gameState, '', 2);
+        const message = JSON.stringify(gameState, "", 2);
 
         // send gameState to every client connected
-        await sendMessageToAllInSession(sessionId, message, event.requestContext);
+        await sendMessageToAllInSession(
+            sessionId,
+            message,
+            event.requestContext
+        );
         return successfullResponse;
     } catch (error) {
         console.log(error);
         return {
             statusCode: 500,
-            error: error.message
-        }
+            error: error.message,
+        };
     }
-}
+};
