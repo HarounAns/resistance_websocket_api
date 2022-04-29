@@ -193,6 +193,7 @@ const createGameState = async (sessionId, connectionId, name) => {
         resistance: [],
         missions: [null, null, null, null, null], // stores the outcome of the missions
         allPlayersJoined: false,
+        createTs: new Date().toISOString(),
         stateMachine: emptyStateMachine
     };
     const params = {
