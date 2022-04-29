@@ -84,6 +84,14 @@ module.exports.addPlayerHandler = async (event) => {
         let playerName = body.playerName.toUpperCase();
         let forceAdd = false;
 
+        // dont allow white space usernames
+        if (playerName.trim().length === 0) {
+            throw {
+                statusCode: 401,
+                body: "Player already in game.",
+            };
+        }
+
         if (playerName.startsWith("*")) {
             playerName = playerName.substring(1);
             forceAdd = true;
